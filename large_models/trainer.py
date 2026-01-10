@@ -522,7 +522,7 @@ class OurTrainer(Trainer):
                     tr_loss += tr_loss_step        
                 self.current_flos += float(self.floating_point_ops(inputs))
                 # self.writer.add_scalar('train_loss', tr_loss, total_steps)
-                self.writer.add_scalar('current_flos', self.current_flos, total_steps)
+                # self.writer.add_scalar('current_flos', self.current_flos, total_steps)
                 # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
                 if self.deepspeed:
                     self.deepspeed.step()
@@ -568,8 +568,8 @@ class OurTrainer(Trainer):
                     if "accuracy" in test_metrics:
                         self.log({"test_acc": test_metrics["accuracy"], "val_acc": val_metrics["accuracy"]})
                         # wandb.log({"test_acc": test_metrics["accuracy"], "val_acc": val_metrics["accuracy"]})
-                        self.writer.add_scalar('accuracy/test', test_metrics["accuracy"], total_steps)
-                        self.writer.add_scalar('accuracy/val', val_metrics["accuracy"], total_steps)
+                        # self.writer.add_scalar('accuracy/test', test_metrics["accuracy"], total_steps)
+                        # self.writer.add_scalar('accuracy/val', val_metrics["accuracy"], total_steps)
                         print("test_acc:",  test_metrics["accuracy"], "val_acc:", val_metrics["accuracy"])
                     else:
                         keys = list(test_metrics.keys())
@@ -581,15 +581,15 @@ class OurTrainer(Trainer):
                         # wandb.log(log_dict)
                         print("log_dict:", log_dict)
                         for key, value in log_dict.items():
-                            self.writer.add_scalar(f"save/{key}", value, total_steps)
+                            # self.writer.add_scalar(f"save/{key}", value, total_steps)
                 max_memory_allocated = 0
                 for device_id in range(torch.cuda.device_count()):
                     # this is not accurate since max memory does not happen simultaneously across all devices
                     max_memory_allocated += torch.cuda.max_memory_allocated(device_id)
                 # self.log({"peak_mem": max_memory_allocated / 1024 ** 3,
                 #           "step_consumption": train_step_duration * 1000})
-                self.writer.add_scalar("memory/peak_mem", max_memory_allocated / 1024 ** 3, total_steps)
-                self.writer.add_scalar("training/step_consumption", train_step_duration * 1000, total_steps)
+                # self.writer.add_scalar("memory/peak_mem", max_memory_allocated / 1024 ** 3, total_steps)
+                # self.writer.add_scalar("training/step_consumption", train_step_duration * 1000, total_steps)
                 # wandb.log({"peak_mem": max_memory_allocated / 1024 ** 3,
                 #            "step_consumption": train_step_duration * 1000})
                 # print("peak_mem:",  max_memory_allocated / 1024 ** 3,
@@ -650,7 +650,7 @@ class OurTrainer(Trainer):
 
         # wandb.log(metrics)
         for key, value in metrics.items():
-            self.writer.add_scalar(key, value, self.state.global_step)
+            # self.writer.add_scalar(key, value, self.state.global_step)
         print("metrics:", metrics)
         self.log(metrics)
         print('trainer metrics:', metrics )
