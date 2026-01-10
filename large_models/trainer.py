@@ -580,12 +580,12 @@ class OurTrainer(Trainer):
                         self.log(log_dict)
                         # wandb.log(log_dict)
                         print("log_dict:", log_dict)
-                        for key, value in log_dict.items():
+                        # for key, value in log_dict.items():
                             # self.writer.add_scalar(f"save/{key}", value, total_steps)
                 max_memory_allocated = 0
-                for device_id in range(torch.cuda.device_count()):
+                # for device_id in range(torch.cuda.device_count()):
                     # this is not accurate since max memory does not happen simultaneously across all devices
-                    max_memory_allocated += torch.cuda.max_memory_allocated(device_id)
+                    # max_memory_allocated += torch.cuda.max_memory_allocated(device_id)
                 # self.log({"peak_mem": max_memory_allocated / 1024 ** 3,
                 #           "step_consumption": train_step_duration * 1000})
                 # self.writer.add_scalar("memory/peak_mem", max_memory_allocated / 1024 ** 3, total_steps)
@@ -649,7 +649,7 @@ class OurTrainer(Trainer):
         self._memory_tracker.stop_and_update_metrics(metrics)
 
         # wandb.log(metrics)
-        for key, value in metrics.items():
+        # for key, value in metrics.items():
             # self.writer.add_scalar(key, value, self.state.global_step)
         print("metrics:", metrics)
         self.log(metrics)
