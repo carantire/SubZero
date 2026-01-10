@@ -3,7 +3,8 @@ import os
 
 import random
 
-import wandb
+# import wandb
+from comet_ml import Experiment
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
@@ -595,11 +596,16 @@ def main():
     
     current_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     # wandb.init(project='zo-bench', name=args.tag, config=args)
+    experiment = Experiment(
+        project_name="zo-bench",
+        experiment_name=args.tag
+    )
     tensorboard_log_dir = f"result/{args.task_name}/{args.model_name.split('/')[-1]}/{args.mode}/{args.trainer}/{args.tag}/{current_date}"
     args.logging_dir = os.path.join(tensorboard_log_dir, "logs")
     os.makedirs(args.logging_dir, exist_ok=True)
     
-    writer = SummaryWriter(tensorboard_log_dir)
+    # writer = SummaryWriter(tensorboard_log_dir)
+    writer = None
     set_seed(args.seed)
     task = get_task(args.task_name)
 
@@ -670,6 +676,7 @@ def main():
             logger.info(metrics)
             print('metrics: \n\n\n', metrics)
             # wandb.log(metrics)
+            experiment.log_metric(metrics)
  
             # for key, value in metrics.items():
             #     writer.add_scalar(key, value, global_step)
@@ -679,6 +686,7 @@ def main():
                 logger.info(metrics)
                 print('metric: /n/n/n', metrics)
                 # wandb.log(metrics)
+                experiment.log_metric(metrics)
                 if args.local_rank <= 0:
                     write_metrics_to_file(metrics, "result/" + result_file_tag(
                         args) + f"-trainset{train_set_id}.json" if args.result_file is None else args.result_file)
@@ -696,11 +704,12 @@ def main():
         metrics = framework.evaluate(train_sets, eval_samples, one_train_set_per_eval_sample=True)
         logger.info(metrics)
         # wandb.log(metrics)
+        experiment.log_metric(metrics)
         if args.local_rank <= 0:
             write_metrics_to_file(metrics, "result/" + result_file_tag(
                 args) + "-onetrainpereval.json" if args.result_file is None else args.result_file)
     
-    writer.close()
+    # writer.close()
 
 if __name__ == "__main__":
     main()
