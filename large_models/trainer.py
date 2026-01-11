@@ -132,7 +132,7 @@ class OurTrainer(Trainer):
         self.writer = writer
         self.p_state = dict()
         self.update_steps = 0
-        
+
     def _inner_training_loop(
             self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
     ):
@@ -325,13 +325,13 @@ class OurTrainer(Trainer):
             self.optimizer = SGD(self.model.parameters(), lr=args.learning_rate, momentum=args.momentum)
             # self.optimizer = {name: SGD([param], lr=args.learning_rate) for name, param in self.model.named_parameters()}
             # print(f"### args.lr_scheduler: {args.lr_scheduler_type}")
-            assert args.lr_scheduler_type == 'constant', "we did not implement lr_schedule."    
+            assert args.lr_scheduler_type == 'constant', "we did not implement lr_schedule."
         else:
             assert args.lr_scheduler_type == 'constant', "we did not implement lr_schedule."
             if args.optimizer == "adam":
                 self.optimizer = Adam(self.model.parameters(), lr=args.learning_rate)
             elif args.optimizer == "sgd":
-                
+
                 self.optimizer = SGD(self.model.parameters(), lr=args.learning_rate, momentum=args.momentum)
         print(self.optimizer)
         # important: at this point:
@@ -429,7 +429,7 @@ class OurTrainer(Trainer):
 
         # Main training loop
         total_steps = -1
-        
+
         for epoch in range(epochs_trained, num_train_epochs):
             epoch_start_time = time.time()
             print(f"-------------------------- Training Epoch {epoch} --------------------------")
@@ -462,7 +462,7 @@ class OurTrainer(Trainer):
 
             # Start one epoch training
             for step, inputs in enumerate(epoch_iterator):
-                
+
                 total_steps += 1
 
                 # torch.cuda.synchronize()
@@ -482,7 +482,7 @@ class OurTrainer(Trainer):
 
                 if step % args.gradient_accumulation_steps == 0:
                     self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
-                                      
+
                 # MeZO added: estimate gradient
                 if args.trainer in ["zo_sgd", "zo_adam"]:
 
@@ -491,15 +491,15 @@ class OurTrainer(Trainer):
                     else:
                         raise ValueError(f"q={args.q} is not supported.")
                 elif args.trainer in ["subzero_sgd"]:
-                        
+
                     if args.q == 1:
-                        tr_loss_step = self.zo_subspace_step(model, inputs)            
+                        tr_loss_step = self.zo_subspace_step(model, inputs)
                     else:
                         raise ValueError(f"q={args.q} is not supported.")
                 elif args.trainer == "forward_grad":
                     tr_loss_step = self.forward_grad_step(model, inputs)
                 else:
-                        
+
                     if (
                             ((step + 1) % args.gradient_accumulation_steps != 0)
                             and args.local_rank != -1
@@ -510,7 +510,7 @@ class OurTrainer(Trainer):
                             tr_loss_step = self.training_step(model, inputs)
                     else:
                         tr_loss_step = self.training_step(model, inputs)
-    
+
                 if (
                         args.logging_nan_inf_filter
                         and not is_torch_tpu_available()
@@ -519,16 +519,16 @@ class OurTrainer(Trainer):
                     # if loss is nan or inf simply add the average of previous logged losses
                     tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                 else:
-                    tr_loss += tr_loss_step        
+                    tr_loss += tr_loss_step
                 self.current_flos += float(self.floating_point_ops(inputs))
                 # self.writer.add_scalar('train_loss', tr_loss, total_steps)
                 # self.writer.add_scalar('current_flos', self.current_flos, total_steps)
                 # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
                 if self.deepspeed:
                     self.deepspeed.step()
-                
+
                 tr_loss /= args.gradient_accumulation_steps
-                
+
                 if (step + 1) % args.gradient_accumulation_steps == 0 or (
                         # last step in epoch but step is always smaller than gradient_accumulation_steps
                         steps_in_epoch <= args.gradient_accumulation_steps
@@ -544,7 +544,7 @@ class OurTrainer(Trainer):
                         self.forward_grad_update(model)
                     else:
                         self.gradient_update(model)
-                    
+
                     # self.state.log_step += 1
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
@@ -570,7 +570,7 @@ class OurTrainer(Trainer):
                         # wandb.log({"test_acc": test_metrics["accuracy"], "val_acc": val_metrics["accuracy"]})
                         # self.writer.add_scalar('accuracy/test', test_metrics["accuracy"], total_steps)
                         # self.writer.add_scalar('accuracy/val', val_metrics["accuracy"], total_steps)
-                        print("test_acc:",  test_metrics["accuracy"], "val_acc:", val_metrics["accuracy"])
+                        print("test_acc:", test_metrics["accuracy"], "val_acc:", val_metrics["accuracy"])
                     else:
                         keys = list(test_metrics.keys())
                         log_dict = {}
@@ -581,11 +581,11 @@ class OurTrainer(Trainer):
                         # wandb.log(log_dict)
                         print("log_dict:", log_dict)
                         # for key, value in log_dict.items():
-                            # self.writer.add_scalar(f"save/{key}", value, total_steps)
+                        # self.writer.add_scalar(f"save/{key}", value, total_steps)
                 max_memory_allocated = 0
                 # for device_id in range(torch.cuda.device_count()):
-                    # this is not accurate since max memory does not happen simultaneously across all devices
-                    # max_memory_allocated += torch.cuda.max_memory_allocated(device_id)
+                # this is not accurate since max memory does not happen simultaneously across all devices
+                # max_memory_allocated += torch.cuda.max_memory_allocated(device_id)
                 # self.log({"peak_mem": max_memory_allocated / 1024 ** 3,
                 #           "step_consumption": train_step_duration * 1000})
                 # self.writer.add_scalar("memory/peak_mem", max_memory_allocated / 1024 ** 3, total_steps)
@@ -594,7 +594,7 @@ class OurTrainer(Trainer):
                 #            "step_consumption": train_step_duration * 1000})
                 # print("peak_mem:",  max_memory_allocated / 1024 ** 3,
                 #         "step_consumption:", train_step_duration * 1000)
-     
+
             if step < 0:
                 # Why would this happen? I don't know, but let's be safe.
                 logger.warning(
@@ -650,10 +650,10 @@ class OurTrainer(Trainer):
 
         # wandb.log(metrics)
         # for key, value in metrics.items():
-            # self.writer.add_scalar(key, value, self.state.global_step)
+        # self.writer.add_scalar(key, value, self.state.global_step)
         print("metrics:", metrics)
         self.log(metrics)
-        print('trainer metrics:', metrics )
+        print('trainer metrics:', metrics)
 
         run_dir = self._get_output_dir(trial)
         checkpoints_sorted = self._sorted_checkpoints(use_mtime=False, output_dir=run_dir)
@@ -737,36 +737,36 @@ class OurTrainer(Trainer):
 
         for _, param in self.named_parameters_to_optim:
             z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device, dtype=param.data.dtype)
-            
+
             param.data = param.data + scaling_factor * z * self.args.zo_eps
 
-   
     def zo_subspace_perturb_parameters(self, random_seed=None, scaling_factor=1):
-             
+
         # Set the random seed to ensure that we sample the same z for perturbation/update
         torch.manual_seed(random_seed if random_seed is not None else self.zo_random_seed)
-        
+
         for _, param, U, V in self.named_parameters_to_optim:
             if len(U.shape) == 1:
-                
-                z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device, dtype=param.data.dtype)    
+
+                z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device,
+                                 dtype=param.data.dtype)
                 param.data = param.data + scaling_factor * z * self.args.zo_eps
-                
+
             elif len(U.shape) == 2:
-  
-                z = torch.normal(mean=0, std=1, size=(U.shape[1], V.shape[0]), device=param.data.device, dtype=param.data.dtype)
+
+                z = torch.normal(mean=0, std=1, size=(U.shape[1], V.shape[0]), device=param.data.device,
+                                 dtype=param.data.dtype)
                 z = (U @ z @ V * math.sqrt(param.data.numel() / z.numel())).view(param.data.shape)
-                
+
                 # param.data = param.data + U @ (scaling_factor * z * self.args.zo_eps * math.sqrt(param.data.numel() / z.numel())) @ V
-                param.data = param.data + scaling_factor * z * self.args.zo_eps 
-                
-        
+                param.data = param.data + scaling_factor * z * self.args.zo_eps
+
     def zo_forward(self, model, inputs):
         """
         Get (no gradient) loss from the model. Dropout is turned off too.
         """
         model.eval()
-        if self.args.non_diff: 
+        if self.args.non_diff:
             if self.args.task_name == "SQuAD":
                 # Non-differentiable objective (may require autoregressive generation)
                 return self.zo_forward_nondiff(model, inputs)
@@ -781,25 +781,25 @@ class OurTrainer(Trainer):
                 # Warning: this is copied from the original Huggingface Trainer. Untested.
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
         return loss.detach()
-    
-    def zo_forward_for_gradient(self, model, inputs):
-            """
-            Get (no gradient) loss from the model. Dropout is turned off too.
-            """
-            model.train()
-            if self.args.non_diff:
-                # Non-differentiable objective (may require autoregressive generation)
-                return self.zo_forward_nondiff(model, inputs)
 
-            # with torch.no_grad():
-            inputs = self._prepare_inputs(inputs)
-            with self.compute_loss_context_manager():
-                loss = self.compute_loss(model, inputs)
-            if self.args.n_gpu > 1:
-                # Warning: this is copied from the original Huggingface Trainer. Untested.
-                loss = loss.mean()  # mean() to average on multi-gpu parallel training
-            return loss
-        
+    def zo_forward_for_gradient(self, model, inputs):
+        """
+        Get (no gradient) loss from the model. Dropout is turned off too.
+        """
+        model.train()
+        if self.args.non_diff:
+            # Non-differentiable objective (may require autoregressive generation)
+            return self.zo_forward_nondiff(model, inputs)
+
+        # with torch.no_grad():
+        inputs = self._prepare_inputs(inputs)
+        with self.compute_loss_context_manager():
+            loss = self.compute_loss(model, inputs)
+        if self.args.n_gpu > 1:
+            # Warning: this is copied from the original Huggingface Trainer. Untested.
+            loss = loss.mean()  # mean() to average on multi-gpu parallel training
+        return loss
+
     def zo_forward_nondiff(self, model, inputs):
         """
         Get (no gradient) non-diffiable loss from the model.
@@ -825,7 +825,7 @@ class OurTrainer(Trainer):
             f1s = [f1(output_text[i], inputs['gold'][i]) for i in range(len(output_text))]
 
         return -torch.tensor(np.mean(f1s), dtype=torch.float32)
-    
+
     @torch.no_grad()
     def zo_step(self, model, inputs):
         """
@@ -835,7 +835,7 @@ class OurTrainer(Trainer):
 
         # What parameters to optimize
         self.named_parameters_to_optim = []
-  
+
         for name, param in model.named_parameters():
             if param.requires_grad:
                 self.named_parameters_to_optim.append((name, param))
@@ -870,14 +870,13 @@ class OurTrainer(Trainer):
 
         return loss1
 
-    
     @torch.no_grad()
     def zo_subspace_step(self, model, inputs):
         """
         Estimate gradient by subzero. Return the loss from f(theta + z)
         """
         args = self.args
-                
+
         # What parameters to optimize
         self.named_parameters_to_optim = []
         for name, param in model.named_parameters():
@@ -885,29 +884,37 @@ class OurTrainer(Trainer):
 
                 if len(torch.squeeze(param.data).shape) == 2:
                     if self.state.global_step == 0:
-   
-                        self.p_state[name] = {'U': torch.zeros(param.data.size(0), args.gauss_rank), 
-                                                'V': torch.zeros(args.gauss_rank, param.data.size(1))}
-                  
-                    p_state = self.p_state[name]          
-                        
+                        self.p_state[name] = {'U': torch.zeros(param.data.size(0), args.gauss_rank),
+                                              'V': torch.zeros(args.gauss_rank, param.data.size(1))}
+
+                    p_state = self.p_state[name]
+
                     if self.state.global_step % args.update_interval == 0:
-                            # print(args.mode)
+                        # print(args.mode)
                         if args.mode in ['lora', 'prefix', 'prompt']:
                             # print(args.mode)
                             # print(param.data.shape)
                             w_shape = reshape_matrix(param.data.numel())
                             print(w_shape)
-                            U, V = fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype, rank=args.gauss_rank)
+                            # U, V = fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype, rank=args.gauss_rank)
+                            W = param.data.detach()
+                            U, V = (
+                                fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
+                                                   rank=args.gauss_rank)
+                                if self.state.global_step == 0
+                                else _random_svd(
+                                    W, param.device, param.dtype, rank=args.gauss_rank
+                                ))
                         else:
-                            U, V = fast_svd_method_v2(w_shape=param.data.shape, device=param.device, dtype=param.data.dtype, rank=args.gauss_rank)
-                      
+                            U, V = fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
+                                                      dtype=param.data.dtype, rank=args.gauss_rank)
+
                         p_state['U'] = U
                         p_state['V'] = V
-                        
+
                     U = p_state['U']
-                    V = p_state['V']  
-                    
+                    V = p_state['V']
+
                     self.named_parameters_to_optim.append((name, param, U, V))
                 else:
                     self.named_parameters_to_optim.append((name, param, torch.Tensor([1.]), torch.Tensor([1.])))
@@ -941,7 +948,6 @@ class OurTrainer(Trainer):
                 # Reset model back to its parameters at start of step
                 self.zo_subspace_perturb_parameters(scaling_factor=1)
 
-
         # for name, param in self.named_parameters_to_optim:
         #     param.grad = param.grad / args.q
 
@@ -949,7 +955,7 @@ class OurTrainer(Trainer):
         assert self.args.gradient_accumulation_steps == 1
 
         return loss1
-    
+
     def zo_update(self, model):
         """
         Update the parameters with the estimated gradients.
@@ -961,7 +967,7 @@ class OurTrainer(Trainer):
             z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device,
                              dtype=param.data.dtype)
 
-            param.grad = self.projected_grad * z              
+            param.grad = self.projected_grad * z
 
             self.optimizer.step()  # will only update grad that is not None.
             # param.data = param.data - graddiff_times_z / args.q  # NOTE this q division does not work for q>1.
@@ -977,26 +983,28 @@ class OurTrainer(Trainer):
         # model.zero_grad()
 
     def zo_subspace_update(self, model):
-        
+
         args = self.args
         # Set the random seed to ensure that we sample the same z for perturbation/update
         torch.manual_seed(self.zo_random_seed)
         for name, param, U, V in self.named_parameters_to_optim:
             # Resample z
-            if len(torch.squeeze(param.data).shape) == 2:    
-                z0 = torch.normal(mean=0, std=1, size=(args.gauss_rank, args.gauss_rank), device=param.data.device, dtype=param.data.dtype)
+            if len(torch.squeeze(param.data).shape) == 2:
+                z0 = torch.normal(mean=0, std=1, size=(args.gauss_rank, args.gauss_rank), device=param.data.device,
+                                  dtype=param.data.dtype)
                 # z = U @ z0 @ V * math.sqrt(param.data.numel() / z0.numel())
-                z = (U @ z0 @ V * math.sqrt(param.data.numel() / z0.numel())).view(param.data.shape).to(param.data.dtype)
+                z = (U @ z0 @ V * math.sqrt(param.data.numel() / z0.numel())).view(param.data.shape).to(
+                    param.data.dtype)
 
             else:
                 z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device,
-                             dtype=param.data.dtype)
+                                 dtype=param.data.dtype)
 
             param.grad = self.projected_grad * z  # NOTE this q division does not work for q>1.
             self.optimizer.step()  # will only update grad that is not None.
             # param.data = param.data - graddiff_times_z / args.q  # NOTE this q division does not work for q>1.
             param.grad = None  # avoid further update.
-            
+
         self.update_steps += 1
         if self.update_steps % 1000 == 0:
             print('model update', self.update_steps)
@@ -1005,7 +1013,7 @@ class OurTrainer(Trainer):
         self.lr_scheduler.step()  # NOTE When we use own optimizer, this will no longer update the lr anymore.
         # self.optimizer.zero_grad()
         # model.zero_grad()
-        
+
     @staticmethod
     @torch.no_grad()
     def functional_call_loss(params, names, buffers, model, batch):
@@ -1177,33 +1185,45 @@ class OurTrainer(Trainer):
         if self.args.push_to_hub and not _internal_call:
             self.push_to_hub(commit_message="Model save")
 
+
 def fast_svd_method_v1(X, rank=8):
-    
     X = X.contiguous()
     U, _ = torch.linalg.qr(X)
     U = U[:, :rank]
     U.contiguous()
     # print('U.shape:', U.shape)
-    
+
     V, _ = torch.linalg.qr(X.T)
     V = V[:, :rank]
     Vt = V.T.contiguous()
     # print('V.shape', Vt.shape)
-    
+
     return U, Vt
+
+
+def _random_svd(matrix, device, dtype, rank=8):
+    omega = torch.randn((matrix.shape[1], rank), device=device)
+    Y = matrix @ omega
+    Q, _ = torch.linalg.qr(Y)
+    U, _, Vt = torch.linalg.svd(Q.T @ matrix, full_matrices=False)
+    U_reduced = Q @ U[:, :rank]
+    Vt_reduced = Vt[:rank, :]
+    return U_reduced.to(dtype).contiguous(), Vt_reduced.to(dtype).contiguous()
+
 
 def fast_svd_method_v2(w_shape, device, dtype, rank=8):
     # print('w_shape:', w_shape)
     U, _ = torch.linalg.qr(torch.randn((w_shape[0], rank), device=device))
     U = U.to(dtype).contiguous()
     # print('U.shape:', U.shape)
-    
+
     V, _ = torch.linalg.qr(torch.randn((w_shape[1], rank), device=device))
     Vt = V.to(dtype).T.contiguous()
     # print('V.shape', Vt.shape)
-    
+
     return U, Vt
-    
+
+
 def reshape_matrix(integer):
     factor1, factor2 = 1, integer
     for i in range(1, int(math.sqrt(integer)) + 1):  # range: [1, sqrt(x) + 1)
