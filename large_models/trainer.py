@@ -496,6 +496,11 @@ class OurTrainer(Trainer):
                         tr_loss_step = self.zo_subspace_step(model, inputs)
                     else:
                         raise ValueError(f"q={args.q} is not supported.")
+                elif args.trainer in ["trunczero_sgd"]:
+                    if args.q == 1:
+                        tr_loss_step = self.zo_subspace_step(model, inputs, True)
+                    else:
+                        raise ValueError(f"q={args.q} is not supported.")
                 elif args.trainer == "forward_grad":
                     tr_loss_step = self.forward_grad_step(model, inputs)
                 else:
@@ -871,7 +876,7 @@ class OurTrainer(Trainer):
         return loss1
 
     @torch.no_grad()
-    def zo_subspace_step(self, model, inputs):
+    def zo_subspace_step(self, model, inputs, use_trunc=False):
         """
         Estimate gradient by subzero. Return the loss from f(theta + z)
         """
@@ -897,16 +902,31 @@ class OurTrainer(Trainer):
                             w_shape = reshape_matrix(param.data.numel())
                             print(w_shape)
                             # U, V = fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype, rank=args.gauss_rank)
-                            U, V = (
-                                fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
-                                                   rank=args.gauss_rank)
-                                if self.state.global_step == 0
-                                else _random_svd(
-                                    param.data.detach(), param.device, param.dtype, rank=args.gauss_rank
-                                ))
+                            if use_trunc:
+                                U, V = (
+                                    fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
+                                                       rank=args.gauss_rank)
+                                    if self.state.global_step == 0
+                                    else _random_svd(
+                                        param.data.detach(), param.device, param.dtype, rank=args.gauss_rank
+                                    ))
+                            else:
+                                U, V = fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
+                                                          rank=args.gauss_rank)
                         else:
-                            U, V = fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
-                                                      dtype=param.data.dtype, rank=args.gauss_rank)
+                            if use_trunc:
+                                U, V = (
+                                    fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
+                                                       dtype=param.data.dtype,
+                                                       rank=args.gauss_rank)
+                                    if self.state.global_step == 0
+                                    else _random_svd(
+                                        param.data.detach(), param.device, param.dtype, rank=args.gauss_rank
+                                    ))
+                            else:
+                                U, V = fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
+                                                          dtype=param.data.dtype,
+                                                          rank=args.gauss_rank)
 
                         p_state['U'] = U
                         p_state['V'] = V
@@ -992,6 +1012,7 @@ class OurTrainer(Trainer):
                 z0 = torch.normal(mean=0, std=1, size=(args.gauss_rank, args.gauss_rank), device=param.data.device,
                                   dtype=param.data.dtype)
                 # z = U @ z0 @ V * math.sqrt(param.data.numel() / z0.numel())
+
                 z = (U @ z0 @ V * math.sqrt(param.data.numel() / z0.numel())).view(param.data.shape).to(
                     param.data.dtype)
 
