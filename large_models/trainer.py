@@ -897,13 +897,12 @@ class OurTrainer(Trainer):
                             w_shape = reshape_matrix(param.data.numel())
                             print(w_shape)
                             # U, V = fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype, rank=args.gauss_rank)
-                            W = param.data.detach()
                             U, V = (
                                 fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
                                                    rank=args.gauss_rank)
                                 if self.state.global_step == 0
                                 else _random_svd(
-                                    W, param.device, param.dtype, rank=args.gauss_rank
+                                    param.data.detach(), param.device, param.dtype, rank=args.gauss_rank
                                 ))
                         else:
                             U, V = fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
