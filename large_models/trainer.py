@@ -897,8 +897,7 @@ class OurTrainer(Trainer):
 
                     if self.state.global_step % args.update_interval == 0:
                         # print(args.mode)
-                        G = self.grad_momentum[name]
-                        G = G / math.sqrt(G.numel())
+                        use_momentum = name in self.grad_momentum and self.state.global_step >= args.warmup_steps
                         if args.mode in ['lora', 'prefix', 'prompt']:
                             # print(args.mode)
                             # print(param.data.shape)
@@ -909,10 +908,10 @@ class OurTrainer(Trainer):
                                 U, V = (
                                     fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
                                                        rank=args.gauss_rank)
-                                    if self.state.global_step == 0 or (
-                                            name not in self.grad_momentum or self.state.global_step < args.warmup_steps)
+                                    if self.state.global_step == 0 or not use_momentum
+
                                     else _random_svd(
-                                        G, param.device, param.dtype, rank=args.gauss_rank
+                                        self.grad_momentum[name], param.device, param.dtype, rank=args.gauss_rank
                                     ))
                             else:
                                 U, V = fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
@@ -923,10 +922,9 @@ class OurTrainer(Trainer):
                                     fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
                                                        dtype=param.data.dtype,
                                                        rank=args.gauss_rank)
-                                    if self.state.global_step == 0 or (
-                                            name not in self.grad_momentum or self.state.global_step < args.warmup_steps)
+                                    if self.state.global_step == 0 or not use_momentum
                                     else _random_svd(
-                                        G, param.device, param.dtype, rank=args.gauss_rank
+                                        self.grad_momentum[name], param.device, param.dtype, rank=args.gauss_rank
                                     ))
                             else:
                                 U, V = fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
