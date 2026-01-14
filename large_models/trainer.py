@@ -1028,8 +1028,9 @@ class OurTrainer(Trainer):
 
             beta = 0.9
             if name not in self.grad_momentum:
-                self.grad_momentum[name] = torch.zeros_like(param.data)
-            self.grad_momentum[name].mul_(beta).add_(param.grad, alpha=1 - beta)
+                self.grad_momentum[name] = param.grad.clone()
+            else:
+                self.grad_momentum[name].mul_(beta).add_(param.grad.clone(), alpha=1 - beta)
             self.optimizer.step()  # will only update grad that is not None.
             # param.data = param.data - graddiff_times_z / args.q  # NOTE this q division does not work for q>1.
             param.grad = None  # avoid further update.
