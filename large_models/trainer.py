@@ -898,6 +898,8 @@ class OurTrainer(Trainer):
                     if self.state.global_step % args.update_interval == 0:
                         # print(args.mode)
                         use_momentum = name in self.grad_momentum and self.state.global_step >= args.warmup_steps
+                        if use_momentum:
+                            print("MOMENTUM NORM", torch.linalg.norm(self.grad_momentum[name]))
                         if args.mode in ['lora', 'prefix', 'prompt']:
                             # print(args.mode)
                             # print(param.data.shape)
