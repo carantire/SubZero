@@ -132,6 +132,7 @@ class OurTrainer(Trainer):
         self.writer = writer
         self.p_state = dict()
         self.update_steps = 0
+        self.grad_momentum = {}
 
     def _inner_training_loop(
             self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
@@ -896,6 +897,8 @@ class OurTrainer(Trainer):
 
                     if self.state.global_step % args.update_interval == 0:
                         # print(args.mode)
+                        G = self.grad_momentum[name]
+                        G = G / math.sqrt(G.numel())
                         if args.mode in ['lora', 'prefix', 'prompt']:
                             # print(args.mode)
                             # print(param.data.shape)
@@ -906,9 +909,10 @@ class OurTrainer(Trainer):
                                 U, V = (
                                     fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
                                                        rank=args.gauss_rank)
-                                    if self.state.global_step == 0
+                                    if self.state.global_step == 0 or (
+                                            name not in self.grad_momentum or self.state.global_step < args.warmup_steps)
                                     else _random_svd(
-                                        param.data.detach(), param.device, param.dtype, rank=args.gauss_rank
+                                        G, param.device, param.dtype, rank=args.gauss_rank
                                     ))
                             else:
                                 U, V = fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
@@ -919,9 +923,10 @@ class OurTrainer(Trainer):
                                     fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
                                                        dtype=param.data.dtype,
                                                        rank=args.gauss_rank)
-                                    if self.state.global_step == 0
+                                    if self.state.global_step == 0 or (
+                                            name not in self.grad_momentum or self.state.global_step < args.warmup_steps)
                                     else _random_svd(
-                                        param.data.detach(), param.device, param.dtype, rank=args.gauss_rank
+                                        G, param.device, param.dtype, rank=args.gauss_rank
                                     ))
                             else:
                                 U, V = fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
@@ -1016,11 +1021,17 @@ class OurTrainer(Trainer):
                 z = (U @ z0 @ V * math.sqrt(param.data.numel() / z0.numel())).view(param.data.shape).to(
                     param.data.dtype)
 
+
             else:
                 z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device,
                                  dtype=param.data.dtype)
 
             param.grad = self.projected_grad * z  # NOTE this q division does not work for q>1.
+
+            beta = 0.9
+            if name not in self.grad_momentum:
+                self.grad_momentum[name] = torch.zeros_like(param.data)
+            self.grad_momentum[name].mul_(beta).add_(param.grad, alpha=1 - beta)
             self.optimizer.step()  # will only update grad that is not None.
             # param.data = param.data - graddiff_times_z / args.q  # NOTE this q division does not work for q>1.
             param.grad = None  # avoid further update.
