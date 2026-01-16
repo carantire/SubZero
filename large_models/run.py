@@ -1,5 +1,6 @@
 import argparse
 import os
+os.environ["COMET_API_KEY"] = "C8yoH2d9ELfw9h9VqMWvQmDWl"
 os.environ["COMET_MODE"] = "offline"
 
 import random
