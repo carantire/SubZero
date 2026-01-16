@@ -1,5 +1,6 @@
 import argparse
 import os
+os.environ["COMET_MODE"] = "offline"
 
 import random
 
