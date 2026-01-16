@@ -3,6 +3,9 @@ import os
 os.environ["COMET_API_KEY"] = "C8yoH2d9ELfw9h9VqMWvQmDWl"
 os.environ["COMET_MODE"] = "offline"
 
+os.environ["WANDB_DISABLED"] = "true"
+os.environ["COMET_DISABLE_AUTO_LOGGING"] = "1"
+
 import random
 
 # import wandb
