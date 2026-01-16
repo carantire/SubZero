@@ -327,6 +327,9 @@ class OurTrainer(Trainer):
             # self.optimizer = {name: SGD([param], lr=args.learning_rate) for name, param in self.model.named_parameters()}
             # print(f"### args.lr_scheduler: {args.lr_scheduler_type}")
             assert args.lr_scheduler_type == 'constant', "we did not implement lr_schedule."
+        elif args.trainer == "trunczero_sgd":
+            self.optimizer = SGD(self.model.parameters(), lr=args.learning_rate, momentum=args.momentum)
+            assert args.lr_scheduler_type == 'constant', "we did not implement lr_schedule."
         else:
             assert args.lr_scheduler_type == 'constant', "we did not implement lr_schedule."
             if args.optimizer == "adam":
@@ -492,7 +495,6 @@ class OurTrainer(Trainer):
                     else:
                         raise ValueError(f"q={args.q} is not supported.")
                 elif args.trainer in ["subzero_sgd"]:
-
                     if args.q == 1:
                         tr_loss_step = self.zo_subspace_step(model, inputs)
                     else:
@@ -900,7 +902,7 @@ class OurTrainer(Trainer):
                         use_momentum = name in self.grad_momentum and self.state.global_step >= args.warmup_steps
                         if use_momentum:
                             print("MOMENTUM NORM", torch.linalg.norm(self.grad_momentum[name]))
-                        if args.mode in ['lora', 'prefix', 'prompt']:
+                        if args.mode in ['lora', 'prefix', 'prompt']:   
                             # print(args.mode)
                             # print(param.data.shape)
                             w_shape = reshape_matrix(param.data.numel())
