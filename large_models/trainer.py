@@ -76,7 +76,6 @@ from transformers.utils import (
 
 # from torch.optim.optimizer import StateDict, params_t
 # import wandb
-from torch.utils.tensorboard import SummaryWriter
 from metrics import f1
 
 _is_native_cpu_amp_available = is_torch_greater_or_equal_than_1_10
@@ -121,6 +120,18 @@ SCHEDULER_NAME = "scheduler.pt"
 SCALER_NAME = "scaler.pt"
 
 
+
+def build_subspace_strategy(args):
+    if args.subspace_strategy == "fixed":
+        return FixedSubspaceStrategy()
+    elif args.subspace_strategy == "alternating":
+        return AlternatingSubspaceStrategy()
+    elif args.subspace_strategy == "random":
+        return RandomSubspaceStrategy()
+    else:
+        raise ValueError(f"Unknown subspace strategy: {args.subspace_strategy}")
+
+
 class OurTrainer(Trainer):
 
     # ZO-Bench added: new parameters to our traininer
@@ -133,6 +144,7 @@ class OurTrainer(Trainer):
         self.p_state = dict()
         self.update_steps = 0
         self.grad_momentum = {}
+        self.subspace_strategy = build_subspace_strategy(self.args)
 
     def _inner_training_loop(
             self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
@@ -529,8 +541,8 @@ class OurTrainer(Trainer):
                 else:
                     tr_loss += tr_loss_step
                 self.current_flos += float(self.floating_point_ops(inputs))
-                # self.writer.add_scalar('train_loss', tr_loss, total_steps)
-                # self.writer.add_scalar('current_flos', self.current_flos, total_steps)
+                self.writer.log_metrics({'train_loss': tr_loss}, step=self.state.global_step)
+                self.writer.log_metrics({'current_flos': self.current_flos}, step=self.state.global_step)
                 # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
                 if self.deepspeed:
                     self.deepspeed.step()
@@ -547,6 +559,8 @@ class OurTrainer(Trainer):
                     if args.trainer in ["zo_sgd", "zo_adam"]:
                         self.zo_update(model)
                     elif args.trainer == "subzero_sgd":
+                        self.zo_subspace_update(model)
+                    elif args.trainer == "trunczero_sgd":
                         self.zo_subspace_update(model)
                     elif args.trainer == "forward_grad":
                         self.forward_grad_update(model)
@@ -575,6 +589,7 @@ class OurTrainer(Trainer):
                     test_metrics = self.evaluate_func([], self.eval_samples)
                     if "accuracy" in test_metrics:
                         self.log({"test_acc": test_metrics["accuracy"], "val_acc": val_metrics["accuracy"]})
+                        self.writer.log_metrics({"test_acc": test_metrics["accuracy"], "val_acc": val_metrics["accuracy"]}, step=self.state.global_step)
                         # wandb.log({"test_acc": test_metrics["accuracy"], "val_acc": val_metrics["accuracy"]})
                         # self.writer.add_scalar('accuracy/test', test_metrics["accuracy"], total_steps)
                         # self.writer.add_scalar('accuracy/val', val_metrics["accuracy"], total_steps)
@@ -586,6 +601,7 @@ class OurTrainer(Trainer):
                             log_dict['test_' + k] = test_metrics[k]
                             log_dict['val_' + k] = val_metrics[k]
                         self.log(log_dict)
+                        self.writer.log_metrics(log_dict, step=self.state.global_step)
                         # wandb.log(log_dict)
                         print("log_dict:", log_dict)
                         # for key, value in log_dict.items():
@@ -661,6 +677,7 @@ class OurTrainer(Trainer):
         # self.writer.add_scalar(key, value, self.state.global_step)
         print("metrics:", metrics)
         self.log(metrics)
+        self.writer.log_metrics(metrics, step=self.state.global_step)
         print('trainer metrics:', metrics)
 
         run_dir = self._get_output_dir(trial)
@@ -892,8 +909,8 @@ class OurTrainer(Trainer):
 
                 if len(torch.squeeze(param.data).shape) == 2:
                     if self.state.global_step == 0:
-                        self.p_state[name] = {'U': torch.zeros(param.data.size(0), args.gauss_rank),
-                                              'V': torch.zeros(args.gauss_rank, param.data.size(1))}
+                        self.p_state[name] = {}
+                        self.subspace_strategy.init_state(self.p_state[name], param, args)
 
                     p_state = self.p_state[name]
 
@@ -911,35 +928,38 @@ class OurTrainer(Trainer):
                             if use_trunc:
                                 U, V = (
                                     fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
-                                                       rank=args.gauss_rank)
+                                                       rank=self.subspace_strategy.svd_rank(args.gauss_rank, args))
                                     if self.state.global_step == 0 or not use_momentum
 
                                     else _random_svd(
-                                        self.grad_momentum[name], param.device, param.dtype, rank=args.gauss_rank
+                                        self.grad_momentum[name], param.device, param.dtype, rank=self.subspace_strategy.svd_rank(args.gauss_rank, args)
                                     ))
                             else:
                                 U, V = fast_svd_method_v2(w_shape=w_shape, device=param.device, dtype=param.data.dtype,
-                                                          rank=args.gauss_rank)
+                                                          rank=self.subspace_strategy.svd_rank(args.gauss_rank, args))
                         else:
                             if use_trunc:
                                 U, V = (
                                     fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
                                                        dtype=param.data.dtype,
-                                                       rank=args.gauss_rank)
+                                                       rank=self.subspace_strategy.svd_rank(args.gauss_rank, args))
                                     if self.state.global_step == 0 or not use_momentum
                                     else _random_svd(
-                                        self.grad_momentum[name], param.device, param.dtype, rank=args.gauss_rank
+                                        self.grad_momentum[name], param.device, param.dtype, rank=self.subspace_strategy.svd_rank(args.gauss_rank, args)
                                     ))
                             else:
                                 U, V = fast_svd_method_v2(w_shape=param.data.shape, device=param.device,
                                                           dtype=param.data.dtype,
-                                                          rank=args.gauss_rank)
+                                                          rank=self.subspace_strategy.svd_rank(args.gauss_rank, args))
 
                         p_state['U'] = U
                         p_state['V'] = V
 
-                    U = p_state['U']
-                    V = p_state['V']
+                    U_full = p_state['U']
+                    V_full = p_state['V']
+                    idx = self.subspace_strategy.get_active_idx(p_state, param, args)
+                    U = U_full[:, idx]
+                    V = V_full[idx, :]
 
                     self.named_parameters_to_optim.append((name, param, U, V))
                 else:
@@ -1016,7 +1036,7 @@ class OurTrainer(Trainer):
         for name, param, U, V in self.named_parameters_to_optim:
             # Resample z
             if len(torch.squeeze(param.data).shape) == 2:
-                z0 = torch.normal(mean=0, std=1, size=(args.gauss_rank, args.gauss_rank), device=param.data.device,
+                z0 = torch.normal(mean=0, std=1, size=(U.shape[1], U.shape[1]), device=param.data.device,
                                   dtype=param.data.dtype)
                 # z = U @ z0 @ V * math.sqrt(param.data.numel() / z0.numel())
 
@@ -1038,6 +1058,8 @@ class OurTrainer(Trainer):
             self.optimizer.step()  # will only update grad that is not None.
             # param.data = param.data - graddiff_times_z / args.q  # NOTE this q division does not work for q>1.
             param.grad = None  # avoid further update.
+            if name in self.p_state:
+                self.subspace_strategy.step(self.p_state[name], param, args)
 
         self.update_steps += 1
         if self.update_steps % 1000 == 0:
@@ -1265,3 +1287,148 @@ def reshape_matrix(integer):
             if integer / i - i < factor2 - factor1:
                 factor1, factor2 = i, integer / i
     return factor1, int(factor2)
+
+
+class SubspaceStrategy:
+    """
+    Base class for subspace selection strategies.
+    """
+
+    def svd_rank(self, base_rank: int, args) -> int:
+        """
+        Return rank to be used in SVD.
+        """
+        raise NotImplementedError
+
+    def init_state(self, p_state: dict, param, args):
+        """
+        Initialize per-parameter state.
+        Called once at global_step == 0.
+        """
+        pass
+
+    def get_active_idx(self, p_state: dict, param, args):
+        """
+        Return indices (or slice) selecting active subspace.
+        """
+        raise NotImplementedError
+
+    def step(self, p_state: dict, param, args):
+        """
+        Called after optimizer.step().
+        Used to update local counters / active indices.
+        """
+        pass
+
+
+class FixedSubspaceStrategy(SubspaceStrategy):
+    """
+    Fixed subspace of rank r.
+    Equivalent to standard TruncZero.
+    """
+
+    def svd_rank(self, base_rank: int, args) -> int:
+        return base_rank
+
+    def init_state(self, p_state: dict, param, args):
+        # Nothing to initialize
+        pass
+
+    def get_active_idx(self, p_state: dict, param, args):
+        # Use full subspace
+        return slice(None)
+
+    def step(self, p_state: dict, param, args):
+        # No state update
+        pass
+
+
+class AlternatingSubspaceStrategy(SubspaceStrategy):
+    """
+    Alternating subspace strategy. Example:
+    args.subspace_rank_multiplier = 2
+    args.subspace_steps_multiplier = 3
+    We use:
+        - first r vectors
+        - second r vectors
+        - first r vectors
+        - second r vectors
+        - first r vectors
+        - second r vectors
+    """
+
+    def svd_rank(self, base_rank: int, args) -> int:
+        return args.subspace_rank_multiplier * base_rank
+
+    def init_state(self, p_state: dict, param, args):
+        r = args.gauss_rank
+        device = param.device
+        # Start with first r vectors
+        p_state['active_idx'] = torch.arange(r, device=device)
+        p_state['local_step'] = 0
+
+    def get_active_idx(self, p_state: dict, param, args):
+        return p_state['active_idx']
+
+    def step(self, p_state: dict, param, args):
+        p_state['local_step'] += 1
+
+        # potential issue: what happens when update_interval % ... != 0
+        if p_state['local_step'] < args.update_interval // (args.subspace_steps_multiplier * args.subspace_rank_multiplier):
+            return
+
+        r = args.gauss_rank
+        m = args.subspace_rank_multiplier
+        device = param.device
+
+        current_block = int(p_state['active_idx'][0].item() // r)
+        next_block = (current_block + 1) % m
+
+        start = next_block * r
+        end = start + r
+        p_state['active_idx'] = torch.arange(start, end, device=device)
+        p_state['local_step'] = 0
+
+
+class RandomSubspaceStrategy(SubspaceStrategy):
+    """
+    Random subspace strategy.
+
+    args.subspace_rank_multiplier = m
+    args.subspace_steps_multiplier = k
+
+    Behaviour:
+        - SVD rank = m * r
+        - Sample random r indices from [0, m*r)
+        - Use them for k blocks
+        - Resample new random r indices
+    """
+
+    def svd_rank(self, base_rank: int, args) -> int:
+        return args.subspace_rank_multiplier * base_rank
+
+    def init_state(self, p_state: dict, param, args):
+        r = args.gauss_rank
+        m = args.subspace_rank_multiplier
+        device = param.device
+        total_rank = m * r
+        p_state['active_idx'] = torch.randperm(total_rank, device=device)[:r]
+        p_state['local_step'] = 0
+
+    def get_active_idx(self, p_state: dict, param, args):
+        return p_state['active_idx']
+
+    def step(self, p_state: dict, param, args):
+        p_state['local_step'] += 1
+
+        # potential issue: what happens when update_interval % subspace_steps_multiplier != 0
+        if p_state['local_step'] < args.update_interval // args.subspace_steps_multiplier:
+            return
+
+        r = args.gauss_rank
+        m = args.subspace_rank_multiplier
+        device = param.device
+        total_rank = m * r
+
+        p_state['active_idx'] = torch.randperm(total_rank, device=device)[:r]
+        p_state['local_step'] = 0

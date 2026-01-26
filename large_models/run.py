@@ -1,6 +1,5 @@
 import argparse
 import os
-os.environ["COMET_API_KEY"] = "C8yoH2d9ELfw9h9VqMWvQmDWl"
 os.environ["COMET_MODE"] = "offline"
 
 os.environ["WANDB_DISABLED"] = "true"
@@ -9,8 +8,7 @@ os.environ["COMET_DISABLE_AUTO_LOGGING"] = "1"
 import random
 
 # import wandb
-from comet_ml import Experiment
-from torch.utils.tensorboard import SummaryWriter
+import comet_ml
 from datetime import datetime
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
 from torch.utils.data import Dataset
@@ -80,7 +78,8 @@ class OurArguments(TrainingArguments):
     ## - zo_adam: zeroth-order Adam training
     ## - zo_sign_opt: zeroth-order sign sgd training
     ## - forward_grad: forward gradient
-    ## (add) -zo_sgd_svd 
+    ## (add) -zo_sgd_svd ?? - what is this
+    ## - trunczero_sgd: TruncZero with SGD
     
     optimizer: str = "adamw"
     ## options
@@ -149,6 +148,15 @@ class OurArguments(TrainingArguments):
     save_on_interrupt: bool = False  # save model when interrupted (useful for long training)
 
     clean_model_at_end: bool = True  # remove everthing at the end.
+
+    # Parametrs for subspace ALS-style iterations
+    subspace_strategy: str = "fixed"
+    ## other options
+    ## - alternating
+    ## - random
+    subspace_rank_multiplier: int = 1  # SVD rank in TruncZero: 1 → r, 2 → 2r, 3 → 3r
+    subspace_steps_multiplier: int = 1
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -601,16 +609,17 @@ def main():
     
     current_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     # wandb.init(project='zo-bench', name=args.tag, config=args)
-    experiment = Experiment(
+    experiment = comet_ml.Experiment(
         project_name="zo-bench",
-        experiment_name=args.tag
+        online=False,
+        experiment_config=args,
     )
     tensorboard_log_dir = f"result/{args.task_name}/{args.model_name.split('/')[-1]}/{args.mode}/{args.trainer}/{args.tag}/{current_date}"
     args.logging_dir = os.path.join(tensorboard_log_dir, "logs")
     os.makedirs(args.logging_dir, exist_ok=True)
     
     # writer = SummaryWriter(tensorboard_log_dir)
-    writer = None
+    writer = experiment
     set_seed(args.seed)
     task = get_task(args.task_name)
 
@@ -681,7 +690,7 @@ def main():
             logger.info(metrics)
             print('metrics: \n\n\n', metrics)
             # wandb.log(metrics)
-            experiment.log_metric(metrics)
+            experiment.log_metrics(metrics)
  
             # for key, value in metrics.items():
             #     writer.add_scalar(key, value, global_step)
@@ -691,7 +700,7 @@ def main():
                 logger.info(metrics)
                 print('metric: /n/n/n', metrics)
                 # wandb.log(metrics)
-                experiment.log_metric(metrics)
+                experiment.log_metrics(metrics)
                 if args.local_rank <= 0:
                     write_metrics_to_file(metrics, "result/" + result_file_tag(
                         args) + f"-trainset{train_set_id}.json" if args.result_file is None else args.result_file)
@@ -709,12 +718,12 @@ def main():
         metrics = framework.evaluate(train_sets, eval_samples, one_train_set_per_eval_sample=True)
         logger.info(metrics)
         # wandb.log(metrics)
-        experiment.log_metric(metrics)
+        experiment.log_metrics(metrics)
         if args.local_rank <= 0:
             write_metrics_to_file(metrics, "result/" + result_file_tag(
                 args) + "-onetrainpereval.json" if args.result_file is None else args.result_file)
     
-    # writer.close()
+    writer.end()
 
 if __name__ == "__main__":
     main()
